@@ -19,7 +19,7 @@ class SettingsService {
     final SharedPreferences prefs = await _prefs;
     final String? mode = prefs.getString(_themeModeKey);
     return ThemeMode.values.firstWhere(
-      (e) => e.toString() == mode,
+          (e) => e.toString() == mode,
       orElse: () => ThemeMode.system, // Default value
     );
   }
@@ -35,8 +35,8 @@ class SettingsService {
     final SharedPreferences prefs = await _prefs;
     final String? option = prefs.getString(_pathOptionKey);
     return PathOption.values.firstWhere(
-      (e) => e.toString() == option,
-      orElse: () => PathOption.full, // Default value
+          (e) => e.toString() == option,
+      orElse: () => PathOption.relative, // Default value
     );
   }
 

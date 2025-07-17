@@ -16,7 +16,7 @@ class SettingsController with ChangeNotifier {
   SettingsController(this._settingsService);
 
   //#region PathOption
-  PathOption _pathOption = PathOption.full; // Default value
+  PathOption _pathOption = PathOption.relative; // Default value
 
   PathOption get pathOption => _pathOption;
 
@@ -29,6 +29,7 @@ class SettingsController with ChangeNotifier {
     // Persist the new setting
     await _settingsService.updatePathOption(newPathOption);
   }
+
   //#endregion
 
   // Make SettingsService a private variable so it is not used directly.
