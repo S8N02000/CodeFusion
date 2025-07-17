@@ -52,14 +52,15 @@ class FileListPanel extends ConsumerWidget {
                     onPressed: () => toggleFolderExpansion(ref, filePath),
                     padding: EdgeInsets.zero,
                     constraints:
-                        const BoxConstraints(), // Adjust based on the actual size of your chevron
+                    const BoxConstraints(), // Adjust based on the actual size of your chevron
                   ),
-                ] else ...[
-                  // Placeholder for files to align with the chevron of folders
-                  const SizedBox(
-                      width: 24,
-                      height: 24), // Ensure this matches the chevron size
-                ],
+                ] else
+                  ...[
+                    // Placeholder for files to align with the chevron of folders
+                    const SizedBox(
+                        width: 24,
+                        height: 24), // Ensure this matches the chevron size
+                  ],
                 Padding(
                   padding: EdgeInsets.only(left: 30.0 * depth),
                   child: isDirectory
@@ -81,7 +82,9 @@ class FileListPanel extends ConsumerWidget {
   }
 
   void toggleFolderExpansion(WidgetRef ref, String filePath) {
-    final currentSet = ref.read(expandedFoldersProvider.notifier).state;
+    final currentSet = ref
+        .read(expandedFoldersProvider.notifier)
+        .state;
     if (currentSet.contains(filePath)) {
       currentSet.remove(filePath);
     } else {
@@ -90,11 +93,15 @@ class FileListPanel extends ConsumerWidget {
       ref.refresh(folderContentsProvider(filePath));
     }
     // Explicitly setting the state to a new instance of the set to ensure notification
-    ref.read(expandedFoldersProvider.notifier).state = {...currentSet};
+    ref
+        .read(expandedFoldersProvider.notifier)
+        .state = {...currentSet};
   }
 
   Future<void> handleFileSelection(WidgetRef ref, String filePath) async {
-    final currentSelectedFiles = ref.read(selectedFilesProvider.notifier).state;
+    final currentSelectedFiles = ref
+        .read(selectedFilesProvider.notifier)
+        .state;
 
     if (currentSelectedFiles.contains(filePath)) {
       await _recursiveDeselection(ref, filePath,
@@ -104,7 +111,9 @@ class FileListPanel extends ConsumerWidget {
     }
 
     // Update the state with the new selection set
-    ref.read(selectedFilesProvider.notifier).state = currentSelectedFiles;
+    ref
+        .read(selectedFilesProvider.notifier)
+        .state = currentSelectedFiles;
     onSelectionChanged(
         currentSelectedFiles); // Ensure this can handle async updates
 
@@ -113,15 +122,17 @@ class FileListPanel extends ConsumerWidget {
         ref); // Make sure this method properly handles asynchronous operations
   }
 
-  Future<void> _recursiveSelection(
-      WidgetRef ref, String filePath, Set<String> selectionSet) async {
+  Future<void> _recursiveSelection(WidgetRef ref, String filePath,
+      Set<String> selectionSet) async {
     final isDirectory = FileSystemEntity.isDirectorySync(filePath);
     selectionSet.add(filePath);
 
     if (isDirectory) {
-      // Asynchronously fetch the folder contents.
-      final folderContents =
-          await ref.read(folderContentsProvider(filePath).future);
+      // Wait for the directory contents to be loaded
+      await ref
+          .read(directoryContentsProvider(filePath).notifier)
+          .ready;
+      final folderContents = ref.read(directoryContentsProvider(filePath));
       for (final childPath in folderContents) {
         await _recursiveSelection(ref, childPath,
             selectionSet); // Wait for recursive selection to complete
@@ -129,18 +140,18 @@ class FileListPanel extends ConsumerWidget {
     }
   }
 
-  Future<void> _recursiveDeselection(
-    WidgetRef ref,
-    String filePath,
-    Set<String> selectionSet,
-  ) async {
+  Future<void> _recursiveDeselection(WidgetRef ref,
+      String filePath,
+      Set<String> selectionSet,) async {
     final isDirectory = FileSystemEntity.isDirectorySync(filePath);
     selectionSet.remove(filePath);
 
     if (isDirectory) {
       // Assuming there's logic here similar to _recursiveSelection for fetching and processing contents
-      final folderContents =
-          await ref.read(folderContentsProvider(filePath).future);
+      await ref
+          .read(directoryContentsProvider(filePath).notifier)
+          .ready;
+      final folderContents = ref.read(directoryContentsProvider(filePath));
       for (final childPath in folderContents) {
         await _recursiveDeselection(ref, childPath, selectionSet);
       }
@@ -148,7 +159,9 @@ class FileListPanel extends ConsumerWidget {
   }
 
   Future<void> _updateEstimatedTokenCount(WidgetRef ref) async {
-    final currentSelectedFiles = ref.read(selectedFilesProvider.state).state;
+    final currentSelectedFiles = ref
+        .read(selectedFilesProvider.state)
+        .state;
     int tokenCount = 0;
 
     // Use a list of futures to track completion of all asynchronous operations
@@ -170,12 +183,14 @@ class FileListPanel extends ConsumerWidget {
     // Optionally add a delay to ensure the state update is the last operation
     Future.delayed(Duration.zero, () {
       // Update the estimated token count provider with the new count
-      ref.read(estimatedTokenCountProvider.state).state = tokenCount;
+      ref
+          .read(estimatedTokenCountProvider.state)
+          .state = tokenCount;
     });
   }
 
-  List<Map<String, dynamic>> _generateCombinedFilesList(
-      WidgetRef ref, List<String> files, int depth) {
+  List<Map<String, dynamic>> _generateCombinedFilesList(WidgetRef ref,
+      List<String> files, int depth) {
     List<Map<String, dynamic>> combinedList = [];
     for (final filePath in files) {
       final isDirectory = FileSystemEntity.isDirectorySync(filePath);
@@ -185,8 +200,7 @@ class FileListPanel extends ConsumerWidget {
 
       // If it's a directory and expanded, recursively add its contents with incremented depth
       if (isDirectory && isExpanded(ref, filePath)) {
-        final folderContents =
-            ref.read(folderContentsProvider(filePath)).asData?.value ?? [];
+        final folderContents = ref.watch(directoryContentsProvider(filePath));
         combinedList
             .addAll(_generateCombinedFilesList(ref, folderContents, depth + 1));
       }

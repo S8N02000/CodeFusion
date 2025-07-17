@@ -47,17 +47,21 @@ class DirectoryContentsNotifier extends StateNotifier<List<String>> {
   Watcher? _watcher;
   StreamSubscription? _subscription; // Pour annuler l'écoute
   final Ref ref; // Pour accéder à Riverpod
+  final Completer<void> _loaded = Completer<void>();
 
   DirectoryContentsNotifier(this.ref, this.directoryPath) : super([]) {
     _loadContents(); // Charge initial
     _startWatching(); // Démarre la surveillance
   }
 
+  Future<void> get ready => _loaded.future;
+
   Future<void> _loadContents() async {
     print('Rafraîchissement de la liste pour $directoryPath'); // Log pour debug
     final newContents = await loadDirectoryContents(directoryPath);
     if (mounted) { // Vérifie si encore actif
       state = newContents; // Mise à jour seulement si mounted
+      if (!_loaded.isCompleted) _loaded.complete();
     } else {
       print('Notifier disposé, ignore update pour $directoryPath');
     }
@@ -79,6 +83,7 @@ class DirectoryContentsNotifier extends StateNotifier<List<String>> {
   void dispose() {
     _subscription?.cancel(); // Arrête l'écoute des événements
     _watcher = null; // Arrête la surveillance
+    if (!_loaded.isCompleted) _loaded.completeError('Disposed');
     super.dispose();
   }
 }

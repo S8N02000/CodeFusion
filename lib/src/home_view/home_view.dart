@@ -22,7 +22,6 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class HomeViewState extends ConsumerState<HomeView> {
-  Map<String, List<String>> _filesByDirectory = {};
   String _selectedDirectory = '';
 
   bool _isCopied = false;
@@ -38,7 +37,7 @@ class HomeViewState extends ConsumerState<HomeView> {
         .read(selectedDirectoryProvider.state)
         .state = directoryPath;
     // Trigger loading of directory contents
-    ref.refresh(directoryContentsLoaderProvider(directoryPath));
+    ref.refresh(directoryContentsProvider(directoryPath));
   }
 
   @override
@@ -48,8 +47,8 @@ class HomeViewState extends ConsumerState<HomeView> {
     final estimatedTokenCount = ref.watch(estimatedTokenCountProvider);
 
     // Check if a directory is selected or if the directory is empty
-    bool shouldShowPickDirectory = _selectedDirectory.isEmpty ||
-        (_filesByDirectory[_selectedDirectory]?.isEmpty ?? true);
+    final files = ref.watch(directoryContentsProvider(_selectedDirectory));
+    bool shouldShowPickDirectory = _selectedDirectory.isEmpty || files.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -114,7 +113,7 @@ class HomeViewState extends ConsumerState<HomeView> {
                   folderMetadata.when(
                     data: (folderSvgIconMetadata) =>
                         FileListPanel(
-                          files: _filesByDirectory[_selectedDirectory] ?? [],
+                          files: files,
                           fileSvgIconMetadata: fileSvgIconMetadata,
                           folderSvgIconMetadata: folderSvgIconMetadata,
                           onSelectionChanged: (Set<String> newSelection) {},
@@ -179,27 +178,17 @@ class HomeViewState extends ConsumerState<HomeView> {
   void _addDirectory() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory != null) {
-      // Directly set the UI state for selected directory to refresh the UI
       setState(() {
         _selectedDirectory = selectedDirectory;
         _isLoading = true; // Indicate loading UI
       });
 
-      // Load directory contents here and update UI state accordingly
-      try {
-        final contents = await loadDirectoryContents(selectedDirectory);
-        // Rafraîchit le provider pour activer le watcher
-        ref.refresh(directoryContentsProvider(selectedDirectory));
-        setState(() {
-          _filesByDirectory[selectedDirectory] = contents;
-        });
-      } catch (error) {
-        // Handle error (e.g., show a toast or log the error)
-      } finally {
-        setState(() {
-          _isLoading = false; // Reset loading UI
-        });
-      }
+      // Trigger refresh
+      ref.refresh(directoryContentsProvider(selectedDirectory));
+
+      setState(() {
+        _isLoading = false; // Reset loading UI
+      });
     }
   }
 
