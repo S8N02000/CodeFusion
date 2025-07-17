@@ -88,9 +88,7 @@ final expandedFoldersProvider = StateProvider<Set<String>>((ref) {
 });
 final folderContentsProvider =
 FutureProvider.family<List<String>, String>((ref, folderPath) async {
-  final directory = Directory(folderPath);
-  final contents = await directory.list().map((entity) => entity.path).toList();
-  return contents;
+  return await loadDirectoryContents(folderPath);
 });
 final estimatedTokenCountProvider = StateProvider<int>((ref) {
   return 0;
