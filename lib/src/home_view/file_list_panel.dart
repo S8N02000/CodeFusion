@@ -59,7 +59,8 @@ class FileListPanel extends ConsumerWidget {
                     // Placeholder for files to align with the chevron of folders
                     const SizedBox(
                         width: 24,
-                        height: 24), // Ensure this matches the chevron size
+                        height: 24),
+                    // Ensure this matches the chevron size
                   ],
                 Padding(
                   padding: EdgeInsets.only(left: 30.0 * depth),
@@ -90,7 +91,7 @@ class FileListPanel extends ConsumerWidget {
     } else {
       currentSet.add(filePath);
       // Triggering a refresh on the folderContentsProvider if you need to fetch new data
-      ref.refresh(folderContentsProvider(filePath));
+      ref.refresh(directoryContentsProvider(filePath));
     }
     // Explicitly setting the state to a new instance of the set to ensure notification
     ref
@@ -129,10 +130,10 @@ class FileListPanel extends ConsumerWidget {
 
     if (isDirectory) {
       // Wait for the directory contents to be loaded
-      await ref
-          .read(directoryContentsProvider(filePath).notifier)
-          .ready;
-      final folderContents = ref.read(directoryContentsProvider(filePath));
+      await ref.read(directoryContentsProvider(filePath).future);
+      final folderContents = ref
+          .read(directoryContentsProvider(filePath))
+          .value ?? [];
       for (final childPath in folderContents) {
         await _recursiveSelection(ref, childPath,
             selectionSet); // Wait for recursive selection to complete
@@ -148,10 +149,10 @@ class FileListPanel extends ConsumerWidget {
 
     if (isDirectory) {
       // Assuming there's logic here similar to _recursiveSelection for fetching and processing contents
-      await ref
-          .read(directoryContentsProvider(filePath).notifier)
-          .ready;
-      final folderContents = ref.read(directoryContentsProvider(filePath));
+      await ref.read(directoryContentsProvider(filePath).future);
+      final folderContents = ref
+          .read(directoryContentsProvider(filePath))
+          .value ?? [];
       for (final childPath in folderContents) {
         await _recursiveDeselection(ref, childPath, selectionSet);
       }
@@ -159,9 +160,7 @@ class FileListPanel extends ConsumerWidget {
   }
 
   Future<void> _updateEstimatedTokenCount(WidgetRef ref) async {
-    final currentSelectedFiles = ref
-        .read(selectedFilesProvider.state)
-        .state;
+    final currentSelectedFiles = ref.read(selectedFilesProvider);
     int tokenCount = 0;
 
     // Use a list of futures to track completion of all asynchronous operations
@@ -184,7 +183,7 @@ class FileListPanel extends ConsumerWidget {
     Future.delayed(Duration.zero, () {
       // Update the estimated token count provider with the new count
       ref
-          .read(estimatedTokenCountProvider.state)
+          .read(estimatedTokenCountProvider.notifier)
           .state = tokenCount;
     });
   }
@@ -200,7 +199,11 @@ class FileListPanel extends ConsumerWidget {
 
       // If it's a directory and expanded, recursively add its contents with incremented depth
       if (isDirectory && isExpanded(ref, filePath)) {
-        final folderContents = ref.watch(directoryContentsProvider(filePath));
+        final folderContentsAsync = ref.watch(
+            directoryContentsProvider(filePath));
+        final folderContents = folderContentsAsync
+            .whenData((data) => data)
+            .value ?? [];
         combinedList
             .addAll(_generateCombinedFilesList(ref, folderContents, depth + 1));
       }
