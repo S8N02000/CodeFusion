@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,6 +8,10 @@ import 'src/settings/settings_controller.dart';
 import 'src/settings/settings_service.dart';
 
 void main() async {
+  // Elle garantit que le moteur Flutter est initialisé avant d'appeler du code
+  // qui dépend des services de la plateforme.
+  WidgetsFlutterBinding.ensureInitialized();
+
   // Set up the SettingsController, which will glue user settings to multiple
   // Flutter Widgets.
   final settingsController = SettingsController(SettingsService());
@@ -24,8 +27,8 @@ void main() async {
     // For widgets to be able to read providers, we need to wrap the entire
     // application in a "ProviderScope" widget.
     // This is where the state of our providers will be stored.
-    ProviderScope(
-      child: App(settingsController: settingsController)
+      ProviderScope(
+          child: App(settingsController: settingsController)
       )
-    );
+  );
 }
