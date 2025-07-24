@@ -1,73 +1,59 @@
+// lib/src/settings/settings_controller.dart
 import 'package:flutter/material.dart';
-
 import 'settings_service.dart';
 
-enum PathOption {
-  full,
-  relative,
-}
+enum PathOption { full, relative }
 
-/// A class that many Widgets can interact with to read user settings, update
-/// user settings, or listen to user settings changes.
-///
-/// Controllers glue Data Services to Flutter Widgets. The SettingsController
-/// uses the SettingsService to store and retrieve user settings.
 class SettingsController with ChangeNotifier {
   SettingsController(this._settingsService);
 
-  //#region PathOption
-  PathOption _pathOption = PathOption.relative; // Default value
-
-  PathOption get pathOption => _pathOption;
-
-  Future<void> updatePathOption(PathOption newPathOption) async {
-    if (_pathOption == newPathOption) return; // No change
-
-    _pathOption = newPathOption;
-    notifyListeners();
-
-    // Persist the new setting
-    await _settingsService.updatePathOption(newPathOption);
-  }
-
-  //#endregion
-
-  // Make SettingsService a private variable so it is not used directly.
   final SettingsService _settingsService;
 
-  // Make ThemeMode a private variable so it is not updated directly without
-  // also persisting the changes with the SettingsService.
   late ThemeMode _themeMode;
-
-  // Allow Widgets to read the user's preferred ThemeMode.
   ThemeMode get themeMode => _themeMode;
+  
+  late PathOption _pathOption;
+  PathOption get pathOption => _pathOption;
 
-  /// Load the user's settings from the SettingsService. It may load from a
-  /// local database or the internet. The controller only knows it can load the
-  /// settings from the service.
+  // AJOUT : État pour les nouvelles propriétés
+  late List<String> _ignoredFolders;
+  List<String> get ignoredFolders => _ignoredFolders;
+
+  String? _lastUsedDirectory;
+  String? get lastUsedDirectory => _lastUsedDirectory;
+
   Future<void> loadSettings() async {
     _themeMode = await _settingsService.themeMode();
     _pathOption = await _settingsService.pathOption();
-
-    // Important! Inform listeners a change has occurred.
+    _ignoredFolders = await _settingsService.ignoredFolders(); // Charger
+    _lastUsedDirectory = await _settingsService.lastUsedDirectory(); // Charger
     notifyListeners();
   }
 
-  /// Update and persist the ThemeMode based on the user's selection.
   Future<void> updateThemeMode(ThemeMode? newThemeMode) async {
-    if (newThemeMode == null) return;
-
-    // Do not perform any work if new and old ThemeMode are identical
-    if (newThemeMode == _themeMode) return;
-
-    // Otherwise, store the new ThemeMode in memory
+    if (newThemeMode == null || newThemeMode == _themeMode) return;
     _themeMode = newThemeMode;
-
-    // Important! Inform listeners a change has occurred.
     notifyListeners();
-
-    // Persist the changes to a local database or the internet using the
-    // SettingService.
     await _settingsService.updateThemeMode(newThemeMode);
+  }
+  
+  Future<void> updatePathOption(PathOption newPathOption) async {
+    if (newPathOption == _pathOption) return;
+    _pathOption = newPathOption;
+    notifyListeners();
+    await _settingsService.updatePathOption(newPathOption);
+  }
+  
+  // AJOUT : Méthodes pour mettre à jour nos nouvelles propriétés
+  Future<void> updateIgnoredFolders(List<String> newIgnoredFolders) async {
+    _ignoredFolders = newIgnoredFolders;
+    notifyListeners();
+    await _settingsService.updateIgnoredFolders(newIgnoredFolders);
+  }
+
+  Future<void> updateLastUsedDirectory(String newPath) async {
+    _lastUsedDirectory = newPath;
+    notifyListeners();
+    await _settingsService.updateLastUsedDirectory(newPath);
   }
 }

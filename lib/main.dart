@@ -1,34 +1,32 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'src/app.dart';
+import 'src/home_view/state_providers.dart';
 import 'src/settings/settings_controller.dart';
 import 'src/settings/settings_service.dart';
 
 void main() async {
-  // Elle garantit que le moteur Flutter est initialisé avant d'appeler du code
-  // qui dépend des services de la plateforme.
+  // Garantit que le moteur Flutter est prêt
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set up the SettingsController, which will glue user settings to multiple
-  // Flutter Widgets.
+  // Crée le contrôleur qui gère les paramètres de l'application
   final settingsController = SettingsController(SettingsService());
 
-  // Load the user's preferred theme while the splash screen is displayed.
-  // This prevents a sudden theme change when the app is first displayed.
+  // Charge les paramètres utilisateur (thème, dossiers ignorés, etc.) avant de construire l'interface
   await settingsController.loadSettings();
 
-  // Run the app and pass in the SettingsController. The app listens to the
-  // SettingsController for changes, then passes it further down to the
-  // SettingsView.
+  // Lance l'application
   runApp(
-    // For widgets to be able to read providers, we need to wrap the entire
-    // application in a "ProviderScope" widget.
-    // This is where the state of our providers will be stored.
-      ProviderScope(
-          child: App(settingsController: settingsController)
-      )
+    ProviderScope(
+      // La magie du pré-chargement se passe ici.
+      // On "override" l'état initial du provider du dossier sélectionné
+      // avec la valeur que nous avons chargée depuis les paramètres.
+      // Si un dossier avait été utilisé la dernière fois, son chemin est injecté,
+      // ce qui déclenche automatiquement le scan par `fileTreeProvider`.
+      overrides: [
+        selectedDirectoryProvider.overrideWith((ref) => settingsController.lastUsedDirectory),
+      ],
+      child: App(settingsController: settingsController),
+    ),
   );
 }
