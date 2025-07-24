@@ -1,3 +1,5 @@
+// lib/src/home_view/file_list_panel.dart
+
 import 'dart:io';
 import 'package:code_fusion/src/home_view/state_providers.dart';
 import 'package:code_fusion/src/home_view/utils.dart';
@@ -6,208 +8,107 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 
 class FileListPanel extends ConsumerWidget {
-  final List<String> files;
   final Map<String, dynamic> fileSvgIconMetadata;
   final Map<String, dynamic> folderSvgIconMetadata;
-  final Function(Set<String>) onSelectionChanged;
 
   const FileListPanel({
     super.key,
-    required this.files,
     required this.fileSvgIconMetadata,
     required this.folderSvgIconMetadata,
-    required this.onSelectionChanged,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Assuming 'files' is already available and contains the root level files/folders
-    final combinedFiles = _generateCombinedFilesList(ref, files, 0);
+    // OPTIMISATION: On surveille la liste aplatie pré-calculée. C'est tout.
+    // L'UI est maintenant "stupide", elle ne fait qu'afficher ce qu'on lui donne.
+    final flatList = ref.watch(flattenedListProvider);
+    final selectedPaths = ref.watch(selectedNodesProvider);
 
+    if (flatList.isEmpty) {
+        // Affiche un indicateur pendant le scan initial
+        return const Center(child: CircularProgressIndicator());
+    }
+
+    // OPTIMISATION: ListView.builder est parfait pour la virtualisation.
     return ListView.builder(
-      itemCount: combinedFiles.length,
+      itemCount: flatList.length,
       itemBuilder: (context, index) {
-        final item = combinedFiles[index];
-        final filePath = item['path'];
-        final depth = item['depth'];
-        final isDirectory = item['isDirectory'];
-        final fileName = path.basename(filePath);
-        final isSelected = ref.watch(selectedFilesProvider).contains(filePath);
-
-        return Container(
-          padding: const EdgeInsets.symmetric(
-              vertical: 0), // Reduce vertical padding
-          child: ListTile(
-            dense: true,
-            key: ValueKey(filePath),
-            title: Text(fileName),
-            leading: Row(
+        final item = flatList[index];
+        final FileNode node = item['node'];
+        final int depth = item['depth'];
+        final isSelected = selectedPaths.contains(node.path);
+        final isExpanded = ref.watch(expandedFoldersProvider).contains(node.path);
+        
+        return ListTile(
+          dense: true,
+          key: ValueKey(node.path),
+          title: Text(node.name),
+          leading: Padding(
+            padding: EdgeInsets.only(left: 20.0 * depth),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (isDirectory) ...[
+                if (node.isDirectory)
                   IconButton(
-                    icon: Icon(isExpanded(ref, filePath)
-                        ? Icons.expand_more
-                        : Icons.chevron_right),
-                    onPressed: () => toggleFolderExpansion(ref, filePath),
-                    padding: EdgeInsets.zero,
-                    constraints:
-                    const BoxConstraints(), // Adjust based on the actual size of your chevron
-                  ),
-                ] else
-                  ...[
-                    // Placeholder for files to align with the chevron of folders
-                    const SizedBox(
-                        width: 24,
-                        height: 24),
-                    // Ensure this matches the chevron size
-                  ],
-                Padding(
-                  padding: EdgeInsets.only(left: 30.0 * depth),
-                  child: isDirectory
-                      ? folderIconWidget(fileName, folderSvgIconMetadata)
-                      : fileIconWidget(fileName, fileSvgIconMetadata),
-                ),
+                    icon: Icon(isExpanded ? Icons.expand_more : Icons.chevron_right),
+                    onPressed: () => _toggleFolderExpansion(ref, node.path),
+                  )
+                else
+                  // Placeholder pour aligner les fichiers
+                  const SizedBox(width: 40), 
+                
+                node.isDirectory
+                    ? folderIconWidget(node.name, folderSvgIconMetadata)
+                    : fileIconWidget(node.name, fileSvgIconMetadata),
               ],
             ),
-            tileColor: isSelected ? Colors.green.withOpacity(0.3) : null,
-            onTap: () => handleFileSelection(ref, filePath),
           ),
+          tileColor: isSelected ? Colors.green.withOpacity(0.3) : null,
+          onTap: () => _handleSelection(ref, node),
         );
       },
     );
   }
 
-  bool isExpanded(WidgetRef ref, String filePath) {
-    return ref.watch(expandedFoldersProvider).contains(filePath);
-  }
-
-  void toggleFolderExpansion(WidgetRef ref, String filePath) {
-    final currentSet = ref
-        .read(expandedFoldersProvider.notifier)
-        .state;
-    if (currentSet.contains(filePath)) {
-      currentSet.remove(filePath);
-    } else {
-      currentSet.add(filePath);
-      // Triggering a refresh on the folderContentsProvider if you need to fetch new data
-      ref.refresh(directoryContentsProvider(filePath));
-    }
-    // Explicitly setting the state to a new instance of the set to ensure notification
-    ref
-        .read(expandedFoldersProvider.notifier)
-        .state = {...currentSet};
-  }
-
-  Future<void> handleFileSelection(WidgetRef ref, String filePath) async {
-    final currentSelectedFiles = ref
-        .read(selectedFilesProvider.notifier)
-        .state;
-
-    if (currentSelectedFiles.contains(filePath)) {
-      await _recursiveDeselection(ref, filePath,
-          currentSelectedFiles); // Assume this is also made async if needed
-    } else {
-      await _recursiveSelection(ref, filePath, currentSelectedFiles);
-    }
-
-    // Update the state with the new selection set
-    ref
-        .read(selectedFilesProvider.notifier)
-        .state = currentSelectedFiles;
-    onSelectionChanged(
-        currentSelectedFiles); // Ensure this can handle async updates
-
-    // Assuming this method exists and is relevant to your logic
-    await _updateEstimatedTokenCount(
-        ref); // Make sure this method properly handles asynchronous operations
-  }
-
-  Future<void> _recursiveSelection(WidgetRef ref, String filePath,
-      Set<String> selectionSet) async {
-    final isDirectory = FileSystemEntity.isDirectorySync(filePath);
-    selectionSet.add(filePath);
-
-    if (isDirectory) {
-      // Wait for the directory contents to be loaded
-      await ref.read(directoryContentsProvider(filePath).future);
-      final folderContents = ref
-          .read(directoryContentsProvider(filePath))
-          .value ?? [];
-      for (final childPath in folderContents) {
-        await _recursiveSelection(ref, childPath,
-            selectionSet); // Wait for recursive selection to complete
+  // OPTIMISATION: Ces fonctions manipulent seulement l'état en mémoire. Plus d'accès disque !
+  void _toggleFolderExpansion(WidgetRef ref, String path) {
+    ref.read(expandedFoldersProvider.notifier).update((state) {
+      final newSet = {...state};
+      if (newSet.contains(path)) {
+        newSet.remove(path);
+      } else {
+        newSet.add(path);
       }
-    }
-  }
-
-  Future<void> _recursiveDeselection(WidgetRef ref,
-      String filePath,
-      Set<String> selectionSet,) async {
-    final isDirectory = FileSystemEntity.isDirectorySync(filePath);
-    selectionSet.remove(filePath);
-
-    if (isDirectory) {
-      // Assuming there's logic here similar to _recursiveSelection for fetching and processing contents
-      await ref.read(directoryContentsProvider(filePath).future);
-      final folderContents = ref
-          .read(directoryContentsProvider(filePath))
-          .value ?? [];
-      for (final childPath in folderContents) {
-        await _recursiveDeselection(ref, childPath, selectionSet);
-      }
-    }
-  }
-
-  Future<void> _updateEstimatedTokenCount(WidgetRef ref) async {
-    final currentSelectedFiles = ref.read(selectedFilesProvider);
-    int tokenCount = 0;
-
-    // Use a list of futures to track completion of all asynchronous operations
-    var futures = <Future>[];
-
-    for (var filePath in currentSelectedFiles) {
-      futures.add(Future(() async {
-        if (await isUtf8Encoded(filePath)) {
-          final file = File(filePath);
-          final fileContent = await file.readAsString();
-          tokenCount += estimateTokenCount(fileContent);
-        }
-      }));
-    }
-
-    // Wait for all file processing operations to complete
-    await Future.wait(futures);
-
-    // Optionally add a delay to ensure the state update is the last operation
-    Future.delayed(Duration.zero, () {
-      // Update the estimated token count provider with the new count
-      ref
-          .read(estimatedTokenCountProvider.notifier)
-          .state = tokenCount;
+      return newSet;
     });
   }
 
-  List<Map<String, dynamic>> _generateCombinedFilesList(WidgetRef ref,
-      List<String> files, int depth) {
-    List<Map<String, dynamic>> combinedList = [];
-    for (final filePath in files) {
-      final isDirectory = FileSystemEntity.isDirectorySync(filePath);
-      // Add the file or directory with its current depth
-      combinedList
-          .add({'path': filePath, 'depth': depth, 'isDirectory': isDirectory});
+  void _handleSelection(WidgetRef ref, FileNode node) {
+    final selected = ref.read(selectedNodesProvider);
+    final isCurrentlySelected = selected.contains(node.path);
 
-      // If it's a directory and expanded, recursively add its contents with incremented depth
-      if (isDirectory && isExpanded(ref, filePath)) {
-        final folderContentsAsync = ref.watch(
-            directoryContentsProvider(filePath));
-        final folderContents = folderContentsAsync
-            .whenData((data) => data)
-            .value ?? [];
-        combinedList
-            .addAll(_generateCombinedFilesList(ref, folderContents, depth + 1));
+    // OPTIMISATION: La logique de sélection récursive se fait sur le modèle en mémoire. C'est instantané.
+    Set<String> affectedPaths = _getAllChildPaths(node);
+
+    ref.read(selectedNodesProvider.notifier).update((state) {
+      final newSet = {...state};
+      if (isCurrentlySelected) {
+        newSet.removeAll(affectedPaths);
+      } else {
+        newSet.addAll(affectedPaths);
+      }
+      return newSet;
+    });
+  }
+  
+  // Fonction utilitaire pour obtenir tous les chemins d'un noeud et de ses enfants.
+  Set<String> _getAllChildPaths(FileNode node) {
+    final paths = <String>{node.path};
+    if (node.isDirectory) {
+      for (final child in node.children) {
+        paths.addAll(_getAllChildPaths(child));
       }
     }
-    return combinedList;
+    return paths;
   }
 }

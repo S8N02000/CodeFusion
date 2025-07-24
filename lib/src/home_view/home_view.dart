@@ -22,99 +22,61 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class HomeViewState extends ConsumerState<HomeView> {
-  String _selectedDirectory = '';
-
+  // Garder un état local uniquement pour les animations de l'UI comme "Copié !"
   bool _isCopied = false;
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  void selectDirectory(WidgetRef ref, String directoryPath) {
-    ref
-        .read(selectedDirectoryProvider.state)
-        .state = directoryPath;
-    // Trigger loading of directory contents
-    ref.refresh(directoryContentsProvider(directoryPath));
-  }
 
   @override
   Widget build(BuildContext context) {
+    // Surveiller les providers nécessaires pour la vue
     final fileMetadata = ref.watch(fileSvgIconMetadataLoaderProvider);
     final folderMetadata = ref.watch(folderSvgIconMetadataLoaderProvider);
-    final estimatedTokenCount = ref.watch(estimatedTokenCountProvider);
-
-    // Check if a directory is selected or if the directory is empty
-    final files = ref.watch(directoryContentsProvider(_selectedDirectory));
-    bool shouldShowPickDirectory = _selectedDirectory.isEmpty ||
-        (files.hasValue && (files.value?.isEmpty ?? true));
+    final tokenCountAsync = ref.watch(estimatedTokenCountProvider);
+    final selectedDirectory = ref.watch(selectedDirectoryProvider);
+    final selectedNodes = ref.watch(selectedNodesProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: _selectedDirectory.isNotEmpty
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Consumer(builder: (context, ref, _) {
-                    final folderMetadataAsyncValue =
-                        ref.watch(folderSvgIconMetadataLoaderProvider);
-                    return folderMetadataAsyncValue.when(
-                      data: (folderSvgIconMetadata) => ElevatedButton(
-                        onPressed: _addDirectory,
-                        child: Row(
-                          children: [
-                            folderIconWidget(path.basename(_selectedDirectory),
-                                folderSvgIconMetadata),
-                            const SizedBox(width: 8),
-                            Text(path.basename(_selectedDirectory)),
-                          ],
-                        ),
-                      ),
-                      loading: () => const CircularProgressIndicator(),
-                      error: (error, stack) => const Icon(Icons.error),
-                    );
-                  }),
-                ],
-              )
-            : const SizedBox.shrink(),
-        // If no directory is selected, show an empty widget
+        title: selectedDirectory != null
+            ? Consumer(builder: (context, ref, _) {
+                // Le titre affiche le dossier racine sélectionné
+                return folderMetadata.when(
+                  data: (folderSvgIconMetadata) => ElevatedButton.icon(
+                    onPressed: _pickDirectory,
+                    icon: folderIconWidget(
+                        path.basename(selectedDirectory), folderSvgIconMetadata),
+                    label: Text(path.basename(selectedDirectory)),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
+                  loading: () => const SizedBox.shrink(),
+                  error: (e, s) => const Icon(Icons.error),
+                );
+              })
+            : const Text('CodeFusion'), // Titre par défaut
         actions: [
-          Consumer(
-            builder: (context, ref, _) {
-              final selectedFiles = ref.watch(selectedFilesProvider);
-              return Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.deselect),
-                    tooltip: 'Tout désélectionner',
-                    // On désactive le bouton si rien n'est sélectionné
-                    onPressed: selectedFiles.isNotEmpty
-                        ? () {
-                            // Vider la liste des fichiers sélectionnés
-                            ref.read(selectedFilesProvider.notifier).state = {};
-                            // Réinitialiser le compteur de tokens
-                            ref.read(estimatedTokenCountProvider.notifier).state = 0;
-                          }
-                        : null,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh), // Icône refresh
-                    onPressed: () {
-                      if (_selectedDirectory.isNotEmpty) {
-                        _refreshAll(ref);
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.settings),
-                    onPressed: () {
-                      Navigator.restorablePushNamed(context, SettingsView.routeName);
-                    },
-                  ),
-                ],
-              );
+          IconButton(
+            icon: const Icon(Icons.deselect),
+            tooltip: 'Tout désélectionner',
+            // Activer le bouton seulement si des éléments sont sélectionnés
+            onPressed: selectedNodes.isNotEmpty
+                ? () {
+                    // La désélection est une simple modification du provider
+                    ref.read(selectedNodesProvider.notifier).state = {};
+                  }
+                : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Rafraîchir la liste des fichiers',
+            // Activer le bouton seulement si un dossier est ouvert
+            onPressed: selectedDirectory != null ? () => _refreshAll(ref) : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.restorablePushNamed(context, SettingsView.routeName);
             },
           ),
         ],
@@ -122,70 +84,67 @@ class HomeViewState extends ConsumerState<HomeView> {
       body: Column(
         children: [
           Expanded(
-            child: shouldShowPickDirectory
+            child: selectedDirectory == null
                 ? Center(
+                    // Écran d'accueil pour inviter à sélectionner un dossier
                     child: ElevatedButton(
-                      onPressed: _addDirectory,
-                      child: const Text("Pick Directory"),
+                      onPressed: _pickDirectory,
+                      child: const Text("Sélectionner un dossier pour commencer"),
                     ),
                   )
                 : fileMetadata.when(
+                    // Une fois le dossier sélectionné, on charge les icônes
+                    // puis on affiche le panneau de fichiers.
                     data: (fileSvgIconMetadata) => folderMetadata.when(
-                      data: (folderSvgIconMetadata) => files.when(
-                        data: (fileList) => FileListPanel(
-                          files: fileList ?? [],
-                          fileSvgIconMetadata: fileSvgIconMetadata,
-                          folderSvgIconMetadata: folderSvgIconMetadata,
-                          onSelectionChanged: (Set<String> newSelection) {},
-                        ),
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (error, stack) =>
-                            const Center(child: Text('Error loading files')),
+                      data: (folderSvgIconMetadata) => FileListPanel(
+                        fileSvgIconMetadata: fileSvgIconMetadata,
+                        folderSvgIconMetadata: folderSvgIconMetadata,
                       ),
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
+                      loading: () => const Center(child: CircularProgressIndicator()),
                       error: (error, stack) =>
-                          const Center(child: Text('Error loading folder icons')),
+                          const Center(child: Text('Erreur de chargement des icônes de dossiers')),
                     ),
-                    loading: () =>
-                        const Center(child: CircularProgressIndicator()),
+                    loading: () => const Center(child: CircularProgressIndicator()),
                     error: (error, stack) =>
-                        const Center(child: Text('Error loading file icons')),
+                        const Center(child: Text('Erreur de chargement des icônes de fichiers')),
                   ),
           ),
-          if (_selectedDirectory.isNotEmpty) // Only show the button when a directory is selected
+          // Le bouton de copie n'apparaît que si un dossier est sélectionné
+          if (selectedDirectory != null)
             Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(12.0),
               child: ElevatedButton(
-                onPressed:
-                    ref.watch(selectedFilesProvider).isNotEmpty ? _copySelectedFilesToClipboard : null,
+                onPressed: selectedNodes.isNotEmpty ? _copySelectedFilesToClipboard : null,
                 style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(30),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Conditional icon based on the _isCopied state
-                    _isCopied
-                        ? const Icon(Icons.check, size: 16.0)
-                        : const Icon(Icons.content_copy, size: 16.0),
+                    // Icone dynamique : check si copié, sinon icone de copie
+                    Icon(_isCopied ? Icons.check : Icons.content_copy, size: 16.0),
                     const SizedBox(width: 8),
-                    _isCopied
-                        ? const Text('Copied!')
-                        : _isLoading
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(
-                                'Copy code (~${_formatTokens(estimatedTokenCount)} tokens)',
-                              ),
+                    // Texte dynamique : gère l'état "copié", le chargement et l'affichage des tokens
+                    if (_isCopied)
+                      const Text('Copié dans le presse-papiers !')
+                    else
+                      tokenCountAsync.when(
+                        data: (count) => Text('Copier le code (~${_formatTokens(count)} tokens)'),
+                        loading: () => const Row(
+                          children: [
+                            Text('Calcul... '),
+                            SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ],
+                        ),
+                        error: (e, s) => const Text('Erreur de calcul'),
+                      ),
                   ],
                 ),
               ),
@@ -195,67 +154,80 @@ class HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
-  void _addDirectory() async {
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-    if (selectedDirectory != null) {
-      setState(() {
-        _selectedDirectory = selectedDirectory;
-        _isLoading = true; // Indicate loading UI
-      });
+  /// Ouvre le sélecteur de fichiers pour choisir un dossier.
+  void _pickDirectory() async {
+    String? directoryPath = await FilePicker.platform.getDirectoryPath();
+    if (directoryPath != null) {
+      // Réinitialiser les états précédents avant de charger le nouveau dossier
+      ref.read(selectedNodesProvider.notifier).state = {};
+      ref.read(expandedFoldersProvider.notifier).state = {};
 
-      // Trigger refresh
-      ref.refresh(directoryContentsProvider(selectedDirectory));
-
-      setState(() {
-        _isLoading = false; // Reset loading UI
-      });
+      // Mettre à jour le provider du dossier sélectionné.
+      // Riverpod s'occupera de déclencher le scan via `fileTreeProvider`.
+      ref.read(selectedDirectoryProvider.notifier).state = directoryPath;
     }
   }
 
+  /// Rafraîchit l'arborescence des fichiers en invalidant le provider principal.
   void _refreshAll(WidgetRef ref) {
-    ref.refresh(directoryContentsProvider(_selectedDirectory));
-    final expanded = ref.read(expandedFoldersProvider);
-    for (final folder in expanded) {
-      ref.refresh(directoryContentsProvider(folder));
-    }
+    // Invalider un provider force sa ré-exécution. C'est la manière propre
+    // de déclencher un rafraîchissement avec Riverpod.
+    ref.invalidate(fileTreeProvider);
   }
 
+  /// Construit le contenu des fichiers sélectionnés et le copie dans le presse-papiers.
   void _copySelectedFilesToClipboard() async {
-    final settingsController = ref.watch(settingsControllerProvider);
-    String combinedContent = '';
-    final selectedFiles = ref.read(selectedFilesProvider); // Utilise directement le provider
-    for (var filePath in selectedFiles) {
-      var fileEntity = FileSystemEntity.typeSync(filePath);
-      if (fileEntity == FileSystemEntityType.file) {
+    final settingsController = ref.read(settingsControllerProvider);
+    final selectedPaths = ref.read(selectedNodesProvider);
+    final rootPath = ref.read(selectedDirectoryProvider);
+
+    if (rootPath == null) return;
+
+    // Utilise Future.wait pour lire tous les fichiers en parallèle,
+    // ce qui est beaucoup plus rapide que de les lire un par un.
+    final List<Future<String>> contentFutures = [];
+
+    for (var filePath in selectedPaths) {
+      // On s'assure de ne traiter que les fichiers
+      if (FileSystemEntity.typeSync(filePath) != FileSystemEntityType.file) continue;
+
+      contentFutures.add(Future(() async {
         try {
           final file = File(filePath);
-          String fileContent = await file.readAsString();
-          // Determine the path to use based on the user's preference
-          String displayPath = settingsController.pathOption == PathOption.full
-              ? filePath // Use the full path
-              : path.relative(filePath, from: _selectedDirectory); // Or the relative path
+          final fileContent = await file.readAsString();
 
-          combinedContent +=
-              '### START OF FILE: $displayPath ###\n$fileContent\n### END OF FILE: $displayPath ###\n\n';
+          // Détermine le chemin à afficher selon les préférences de l'utilisateur
+          final displayPath = settingsController.pathOption == PathOption.full
+              ? filePath
+              : path.relative(filePath, from: rootPath);
+
+          return '### START OF FILE: $displayPath ###\n$fileContent\n### END OF FILE: $displayPath ###\n\n';
         } catch (e) {
-          // Handle the case where the file cannot be read (if necessary)
+          // Si un fichier ne peut être lu (ex: binaire, permissions), on retourne une chaîne vide
+          // pour ne pas faire échouer toute l'opération.
+          debugPrint("Impossible de lire le fichier $filePath: $e");
+          return '';
         }
-      }
+      }));
     }
+
+    // Attend que tous les fichiers soient lus
+    final contents = await Future.wait(contentFutures);
+    final combinedContent = contents.join();
+
     if (combinedContent.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: combinedContent));
-      setState(() {
-        _isCopied = true;
-      });
-      // Optionally reset _isCopied flag after a few seconds
+      if (!mounted) return;
+      setState(() => _isCopied = true);
+
+      // Réinitialise l'état du bouton après 2 secondes
       Future.delayed(const Duration(seconds: 2), () {
-        setState(() {
-          _isCopied = false;
-        });
+        if (mounted) setState(() => _isCopied = false);
       });
     }
   }
 
+  /// Formatte le nombre de tokens pour une meilleure lisibilité (ex: 1.2k).
   String _formatTokens(int tokens) {
     if (tokens >= 1000) {
       return '${(tokens / 1000).toStringAsFixed(1)}k';
