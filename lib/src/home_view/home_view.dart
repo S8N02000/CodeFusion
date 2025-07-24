@@ -66,94 +66,50 @@ class HomeViewState extends ConsumerState<HomeView> {
       body: Column(
         children: [
           Expanded(
-            child: selectedDirectory == null
-                ? Center(
-                    child: ElevatedButton(
-                      onPressed: _pickDirectory,
-                      child: const Text("Sélectionner un dossier pour commencer"),
-                    ),
-                  )
-                : fileTreeAsync.when(
-                    loading: () => const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text('Scan du dossier en cours...'),
-                        ],
-                      ),
-                    ),
-                    error: (error, stack) => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Une erreur est survenue lors du scan des fichiers.',
-                              textAlign: TextAlign.center,
-                            ),
-                            Text(
-                              'Vérifiez les permissions du dossier et la liste des dossiers ignorés.',
-                              style: Theme.of(context).textTheme.bodySmall,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: () => ref.invalidate(fileTreeProvider),
-                              child: const Text('Réessayer'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    data: (fileTree) {
-                      final fileMetadata = ref.watch(fileSvgIconMetadataLoaderProvider);
-                      final folderMetadata = ref.watch(folderSvgIconMetadataLoaderProvider);
-                      return fileMetadata.when(
-                        data: (fm) => folderMetadata.when(
-                          data: (fom) => FileListPanel(fileSvgIconMetadata: fm, folderSvgIconMetadata: fom),
-                          loading: () => const Center(child: CircularProgressIndicator()),
-                          error: (e, s) => const Center(child: Text("Erreur de chargement des icônes de dossiers")),
-                        ),
-                        loading: () => const Center(child: CircularProgressIndicator()),
-                        error: (e, s) => const Center(child: Text("Erreur de chargement des icônes de fichiers")),
-                      );
-                    },
-                  ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _buildBody(context, selectedDirectory, fileTreeAsync),
+            ),
           ),
           if (selectedDirectory != null)
             Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: ElevatedButton(
-                onPressed: selectedNodes.isNotEmpty ? _copySelectedFilesToClipboard : null,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(_isCopied ? Icons.check : Icons.content_copy, size: 16.0),
-                    const SizedBox(width: 8),
-                    if (_isCopied)
-                      const Text('Copié dans le presse-papiers !')
-                    else
-                      tokenCountAsync.when(
-                        data: (count) => Text('Copier le code (~${_formatTokens(count)} tokens)'),
-                        loading: () => const Row(
-                          children: [
-                            Text('Calcul... '),
-                            SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
-                          ],
-                        ),
-                        error: (e, s) => const Text('Erreur de calcul'),
-                      ),
-                  ],
-                ),
+              padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: selectedNodes.isNotEmpty ? _exportSelectedFilesToFile : null,
+                    icon: const Icon(Icons.save_as_outlined, size: 16),
+                    label: const Text('Exporter'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: selectedNodes.isNotEmpty ? _copySelectedFilesToClipboard : null,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(_isCopied ? Icons.check : Icons.content_copy, size: 16.0),
+                        const SizedBox(width: 8),
+                        if (_isCopied)
+                          const Text('Copié !')
+                        else
+                          tokenCountAsync.when(
+                            data: (count) => Text('Copier (~${_formatTokens(count)})'),
+                            loading: () => const Row(children: [Text('Calcul...'), SizedBox(width:12, height:12, child: CircularProgressIndicator(strokeWidth:2))]),
+                            error: (e, s) => const Text('Erreur'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
         ],
@@ -161,26 +117,38 @@ class HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
-  void _pickDirectory() async {
-    String? directoryPath = await FilePicker.platform.getDirectoryPath();
-    if (directoryPath != null) {
-      // Sauvegarde ce chemin pour le prochain lancement de l'app
-      ref.read(settingsControllerProvider.notifier).updateLastUsedDirectory(directoryPath);
-
-      // Réinitialise les états de l'UI
-      ref.read(selectedNodesProvider.notifier).state = {};
-      ref.read(expandedFoldersProvider.notifier).state = {};
-
-      // Met à jour le provider du dossier sélectionné, ce qui déclenchera un nouveau scan
-      ref.read(selectedDirectoryProvider.notifier).state = directoryPath;
+  Widget _buildBody(BuildContext context, String? selectedDirectory, AsyncValue<FileNode?> fileTreeAsync) {
+    if (selectedDirectory == null) {
+      return Center(key: const ValueKey('welcome'), child: ElevatedButton(onPressed: _pickDirectory, child: const Text("Sélectionner un dossier")));
     }
+
+    return fileTreeAsync.when(
+      loading: () => Center(key: const ValueKey('loading'), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [CircularProgressIndicator(), SizedBox(height: 16), Text('Scan du dossier en cours...')])),
+      error: (error, stack) {
+        if (error is Exception && error.toString().contains('Scan cancelled')) {
+          return Center(key: const ValueKey('loading-cancelled'), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [CircularProgressIndicator(), SizedBox(height: 16), Text('Changement de dossier...')]));
+        }
+        return Center(key: const ValueKey('error'), child: Padding(padding: const EdgeInsets.all(16.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 48), const SizedBox(height: 16), const Text('Une erreur est survenue.', textAlign: TextAlign.center), Text('Vérifiez les permissions du dossier.', style: Theme.of(context).textTheme.bodySmall), const SizedBox(height: 16), ElevatedButton(onPressed: () => ref.invalidate(fileTreeProvider), child: const Text('Réessayer'))])));
+      },
+      data: (fileTree) {
+        final fileMetadata = ref.watch(fileSvgIconMetadataLoaderProvider);
+        final folderMetadata = ref.watch(folderSvgIconMetadataLoaderProvider);
+        return fileMetadata.when(
+          data: (fm) => folderMetadata.when(
+              data: (fom) => FileListPanel(key: const ValueKey('data-panel'), fileSvgIconMetadata: fm, folderSvgIconMetadata: fom),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, s) => const Center(child: Text("Erreur icônes dossiers"))),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, s) => const Center(child: Text("Erreur icônes fichiers")));
+      },
+    );
   }
 
-  void _copySelectedFilesToClipboard() async {
+  Future<String> _generateCombinedContent() async {
     final settingsController = ref.read(settingsControllerProvider);
     final selectedPaths = ref.read(selectedNodesProvider);
     final rootPath = ref.read(selectedDirectoryProvider);
-    if (rootPath == null) return;
+    if (rootPath == null) return "";
 
     final List<Future<String>> contentFutures = [];
     for (var filePath in selectedPaths) {
@@ -189,20 +157,29 @@ class HomeViewState extends ConsumerState<HomeView> {
         try {
           final file = File(filePath);
           final fileContent = await file.readAsString();
-          final displayPath = settingsController.pathOption == PathOption.full
-              ? filePath
-              : path.relative(filePath, from: rootPath);
+          final displayPath = settingsController.pathOption == PathOption.full ? filePath : path.relative(filePath, from: rootPath);
           return '### START OF FILE: $displayPath ###\n$fileContent\n### END OF FILE: $displayPath ###\n\n';
         } catch (e) {
-          debugPrint("Impossible de lire le fichier $filePath: $e");
           return '';
         }
       }));
     }
-
     final contents = await Future.wait(contentFutures);
-    final combinedContent = contents.join();
+    return contents.join();
+  }
 
+  void _pickDirectory() async {
+    String? directoryPath = await FilePicker.platform.getDirectoryPath();
+    if (directoryPath != null) {
+      ref.read(settingsControllerProvider.notifier).updateLastUsedDirectory(directoryPath);
+      ref.read(selectedNodesProvider.notifier).state = {};
+      ref.read(expandedFoldersProvider.notifier).state = {};
+      ref.read(selectedDirectoryProvider.notifier).state = directoryPath;
+    }
+  }
+
+  void _copySelectedFilesToClipboard() async {
+    final combinedContent = await _generateCombinedContent();
     if (combinedContent.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: combinedContent));
       if (!mounted) return;
@@ -210,6 +187,33 @@ class HomeViewState extends ConsumerState<HomeView> {
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _isCopied = false);
       });
+    }
+  }
+
+  void _exportSelectedFilesToFile() async {
+    final combinedContent = await _generateCombinedContent();
+    if (combinedContent.isEmpty) return;
+
+    try {
+      String? outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Veuillez choisir où sauvegarder votre fichier :',
+        fileName: 'code-fusion-export.txt',
+      );
+      if (outputPath != null) {
+        final file = File(outputPath);
+        await file.writeAsString(combinedContent);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Fichier exporté avec succès vers $outputPath')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de l\'exportation du fichier : $e')),
+        );
+      }
     }
   }
 
