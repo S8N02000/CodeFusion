@@ -32,6 +32,7 @@ dev_dependencies:
   build_runner: ^2.5.4
   custom_lint: ^0.7.5
   riverpod_lint: ^2.6.5
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -44,3 +45,22 @@ flutter:
     - assets/icons/
     - assets/icons/files/
     - assets/icons/folders/
+
+flutter_launcher_icons:
+  # Indique si vous voulez générer les icônes pour Android et iOS (mettez à false pour une app de bureau pure)
+  android: false
+  ios: false
+
+  # Configuration pour les plateformes de bureau
+  windows:
+    generate: true
+    image_path: "assets\\images\\app_icon.png"
+    icon_size: 256
+
+  macos:
+    generate: true
+    image_path: "assets\\images\\app_icon.png"
+
+  linux:
+    generate: true
+    image_path: "assets\\images\\app_icon.png"
