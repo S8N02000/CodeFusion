@@ -1,10 +1,6 @@
-import 'package:code_fusion/src/custom_colors.dart';
 import 'package:code_fusion/src/settings/settings_view.dart';
 import 'package:code_fusion/src/home_view/home_view.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-
-// import 'package:code_fusion/l10n/app_localizations.dart';
 import 'settings/settings_controller.dart';
 
 class App extends StatelessWidget {
@@ -20,127 +16,90 @@ class App extends StatelessWidget {
     return ListenableBuilder(
       listenable: settingsController,
       builder: (BuildContext context, Widget? child) {
+        // Définition de notre thème sombre personnalisé "Developer Pro"
+        final developerDarkTheme = ThemeData(
+          brightness: Brightness.dark,
+          primaryColor: const Color(0xFF0D63F8), // Un bleu électrique pour l'accent
+          scaffoldBackgroundColor: const Color(0xFF121212), // Un fond très sombre mais pas noir pur
+          
+          // Palette de couleurs moderne
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF0D63F8),
+            secondary: Color(0xFF0D63F8),
+            background: Color(0xFF1E1E1E), // Couleur de fond principale des panneaux
+            surface: Color(0xFF252526), // Couleur pour les cartes, dialogues, etc.
+            onPrimary: Colors.white,
+            onSecondary: Colors.white,
+            onBackground: Color(0xFFCCCCCC), // Texte principal (blanc cassé)
+            onSurface: Color(0xFFCCCCCC),
+            error: Colors.redAccent,
+            onError: Colors.white,
+          ),
+
+          // Style du texte
+          textTheme: const TextTheme(
+            bodyMedium: TextStyle(color: Color(0xFFCCCCCC)),
+            bodyLarge: TextStyle(color: Color(0xFFCCCCCC)),
+            titleLarge: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+
+          // Style des icônes
+          iconTheme: const IconThemeData(color: Color(0xFFCCCCCC)),
+          
+          // Style des boutons
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: const Color(0xFF0D63F8), // Fond bleu
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFCCCCCC),
+              side: const BorderSide(color: Color(0xFF333333)), // Bordure subtile
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          
+          // Style de la barre d'application
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFF121212), // Assorti au fond du scaffold
+            elevation: 0, // Pas d'ombre pour un look plat
+            titleTextStyle: TextStyle(color: Color(0xFFCCCCCC), fontSize: 16),
+          ),
+          
+          // Style des tuiles de la liste
+          listTileTheme: const ListTileThemeData(
+            iconColor: Color(0xFFCCCCCC),
+          ),
+        );
+
         return MaterialApp(
-          //Providing a restorationScopeId allows the Navigator built by the
-          // MaterialApp to restore the navigation stack when a user leaves and
-          // returns to the app after it has been killed while running in the
-          // background.
           restorationScopeId: 'app',
+          title: 'Code_Fusion',
+          
+          // On n'utilise que notre thème sombre personnalisé
+          theme: developerDarkTheme,
+          darkTheme: developerDarkTheme,
+          themeMode: ThemeMode.dark,
 
-          // Provide the generated AppLocalizations to the MaterialApp. This
-          // allows descendant Widgets to display the correct translations
-          // depending on the user's locale.
-          // localizationsDelegates: const [
-          //   AppLocalizations.delegate,
-          //   GlobalMaterialLocalizations.delegate,
-          //   GlobalWidgetsLocalizations.delegate,
-          //   GlobalCupertinoLocalizations.delegate,
-          // ],
-          // supportedLocales: const [
-          //   Locale('en', ''), // English, no country code
-          // ],
+          debugShowCheckedModeBanner: false,
 
-          // Use AppLocalizations to configure the correct application title
-          // depending on the user's locale.
-          //
-          // The appTitle is defined in .arb files found in the localization
-          // directory.
-          // onGenerateTitle: (BuildContext context) =>
-          // AppLocalizations.of(context)!.appTitle,
-          title: 'CodeFusion',
-
-          //Define a light and dark color theme. Then, read the user's
-          // preferred ThemeMode (light, dark, or system default) from the
-          // SettingsController to display the correct theme.
-          // theme: ThemeData(),
-          // darkTheme: ThemeData.dark(),
-
-          theme: ThemeData(
-            primarySwatch: Colors.blueGrey,
-            visualDensity: VisualDensity.adaptivePlatformDensity,
-            textTheme: const TextTheme(
-              bodyLarge: TextStyle(color: Colors.black),
-              bodyMedium: TextStyle(color: Colors.black),
-              titleMedium: TextStyle(color: Colors.black),
-              titleSmall: TextStyle(color: Colors.black),
-            ),
-            iconTheme: const IconThemeData(
-              color: Colors.black, // Make icons white
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.all(
-                    Colors.black), // Text color for ElevatedButton
-              ),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.all(
-                    Colors.black), // Text color for TextButton
-              ),
-            ),
-            outlinedButtonTheme: OutlinedButtonThemeData(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.all(
-                    Colors.black), // Text color for OutlinedButton
-              ),
-            ),
-          ),
-          darkTheme: ThemeData.dark().copyWith(
-            primaryColor: Colors.green,
-            //scaffoldBackgroundColor: const Color(0xff2b2b2b),
-            visualDensity: VisualDensity.adaptivePlatformDensity,
-            textTheme: const TextTheme(
-              bodyLarge: TextStyle(color: Colors.white),
-              bodyMedium: TextStyle(color: Colors.white),
-              titleMedium: TextStyle(color: Colors.white),
-              titleSmall: TextStyle(color: Colors.white),
-            ),
-            iconTheme: const IconThemeData(
-              color: Colors.white, // Make icons white
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.all(
-                    Colors.white), // Text color for ElevatedButton
-              ),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.all(
-                    Colors.white), // Text color for TextButton
-              ),
-            ),
-            outlinedButtonTheme: OutlinedButtonThemeData(
-              style: ButtonStyle(
-                foregroundColor: MaterialStateProperty.all(
-                    Colors.white), // Text color for OutlinedButton
-              ),
-            ),
-          ),
-
-          themeMode: settingsController.themeMode,
-
-          // Define a function to handle named routes in order to support
-          // Flutter web url navigation and deep linking.
           onGenerateRoute: (RouteSettings routeSettings) {
             switch (routeSettings.name) {
               case HomeView.routeName:
                 return MaterialPageRoute<void>(
-                  builder: (context) =>
-                      HomeView(controller: settingsController),
+                  builder: (context) => HomeView(controller: settingsController),
                 );
               case SettingsView.routeName:
                 return MaterialPageRoute<void>(
-                  builder: (context) =>
-                      SettingsView(controller: settingsController),
+                  builder: (context) => SettingsView(controller: settingsController),
                 );
               default:
-              // Implement a fallback or error route if you like
                 return MaterialPageRoute<void>(
                   builder: (context) =>
-                  const Scaffold(
-                      body: Center(child: Text('Page not found!'))),
+                  const Scaffold(body: Center(child: Text('Page not found!'))),
                 );
             }
           },

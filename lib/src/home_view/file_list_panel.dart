@@ -2,212 +2,204 @@ import 'dart:io';
 import 'package:code_fusion/src/home_view/state_providers.dart';
 import 'package:code_fusion/src/home_view/utils.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as path;
 
 class FileListPanel extends ConsumerWidget {
-  final List<String> files;
   final Map<String, dynamic> fileSvgIconMetadata;
   final Map<String, dynamic> folderSvgIconMetadata;
-  final Function(Set<String>) onSelectionChanged;
 
   const FileListPanel({
     super.key,
-    required this.files,
     required this.fileSvgIconMetadata,
     required this.folderSvgIconMetadata,
-    required this.onSelectionChanged,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Assuming 'files' is already available and contains the root level files/folders
-    final combinedFiles = _generateCombinedFilesList(ref, files, 0);
+    final flatList = ref.watch(flattenedListProvider);
+
+    if (flatList.isEmpty) {
+        return const Center(child: Text("Ce dossier est vide.", style: TextStyle(color: Colors.grey)));
+    }
 
     return ListView.builder(
-      itemCount: combinedFiles.length,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      itemCount: flatList.length,
       itemBuilder: (context, index) {
-        final item = combinedFiles[index];
-        final filePath = item['path'];
-        final depth = item['depth'];
-        final isDirectory = item['isDirectory'];
-        final fileName = path.basename(filePath);
-        final isSelected = ref.watch(selectedFilesProvider).contains(filePath);
+        final item = flatList[index];
+        final FileNode node = item['node'];
 
-        return Container(
-          padding: const EdgeInsets.symmetric(
-              vertical: 0), // Reduce vertical padding
-          child: ListTile(
-            dense: true,
-            key: ValueKey(filePath),
-            title: Text(fileName),
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isDirectory) ...[
-                  IconButton(
-                    icon: Icon(isExpanded(ref, filePath)
-                        ? Icons.expand_more
-                        : Icons.chevron_right),
-                    onPressed: () => toggleFolderExpansion(ref, filePath),
-                    padding: EdgeInsets.zero,
-                    constraints:
-                    const BoxConstraints(), // Adjust based on the actual size of your chevron
-                  ),
-                ] else
-                  ...[
-                    // Placeholder for files to align with the chevron of folders
-                    const SizedBox(
-                        width: 24,
-                        height: 24),
-                    // Ensure this matches the chevron size
-                  ],
-                Padding(
-                  padding: EdgeInsets.only(left: 30.0 * depth),
-                  child: isDirectory
-                      ? folderIconWidget(fileName, folderSvgIconMetadata)
-                      : fileIconWidget(fileName, fileSvgIconMetadata),
-                ),
-              ],
-            ),
-            tileColor: isSelected ? Colors.green.withOpacity(0.3) : null,
-            onTap: () => handleFileSelection(ref, filePath),
-          ),
+        // On passe toutes les données nécessaires à notre nouvel item stylisé
+        return _FileListItem(
+          node: node,
+          depth: item['depth'],
+          fileSvgIconMetadata: fileSvgIconMetadata,
+          folderSvgIconMetadata: folderSvgIconMetadata,
         );
       },
     );
   }
+}
 
-  bool isExpanded(WidgetRef ref, String filePath) {
-    return ref.watch(expandedFoldersProvider).contains(filePath);
-  }
+// NOUVEAU WIDGET DÉDIÉ pour chaque ligne de la liste.
+// Il est `Stateful` pour gérer son propre état de survol (hover).
+class _FileListItem extends ConsumerStatefulWidget {
+  final FileNode node;
+  final int depth;
+  final Map<String, dynamic> fileSvgIconMetadata;
+  final Map<String, dynamic> folderSvgIconMetadata;
 
-  void toggleFolderExpansion(WidgetRef ref, String filePath) {
-    final currentSet = ref
-        .read(expandedFoldersProvider.notifier)
-        .state;
-    if (currentSet.contains(filePath)) {
-      currentSet.remove(filePath);
-    } else {
-      currentSet.add(filePath);
-      // Triggering a refresh on the folderContentsProvider if you need to fetch new data
-      ref.refresh(directoryContentsProvider(filePath));
-    }
-    // Explicitly setting the state to a new instance of the set to ensure notification
-    ref
-        .read(expandedFoldersProvider.notifier)
-        .state = {...currentSet};
-  }
+  const _FileListItem({
+    required this.node,
+    required this.depth,
+    required this.fileSvgIconMetadata,
+    required this.folderSvgIconMetadata,
+  });
 
-  Future<void> handleFileSelection(WidgetRef ref, String filePath) async {
-    final currentSelectedFiles = ref
-        .read(selectedFilesProvider.notifier)
-        .state;
+  @override
+  ConsumerState<_FileListItem> createState() => _FileListItemState();
+}
 
-    if (currentSelectedFiles.contains(filePath)) {
-      await _recursiveDeselection(ref, filePath,
-          currentSelectedFiles); // Assume this is also made async if needed
-    } else {
-      await _recursiveSelection(ref, filePath, currentSelectedFiles);
-    }
+class _FileListItemState extends ConsumerState<_FileListItem> {
+  // État local pour le survol de la souris
+  bool _isHovered = false;
 
-    // Update the state with the new selection set
-    ref
-        .read(selectedFilesProvider.notifier)
-        .state = currentSelectedFiles;
-    onSelectionChanged(
-        currentSelectedFiles); // Ensure this can handle async updates
-
-    // Assuming this method exists and is relevant to your logic
-    await _updateEstimatedTokenCount(
-        ref); // Make sure this method properly handles asynchronous operations
-  }
-
-  Future<void> _recursiveSelection(WidgetRef ref, String filePath,
-      Set<String> selectionSet) async {
-    final isDirectory = FileSystemEntity.isDirectorySync(filePath);
-    selectionSet.add(filePath);
-
-    if (isDirectory) {
-      // Wait for the directory contents to be loaded
-      await ref.read(directoryContentsProvider(filePath).future);
-      final folderContents = ref
-          .read(directoryContentsProvider(filePath))
-          .value ?? [];
-      for (final childPath in folderContents) {
-        await _recursiveSelection(ref, childPath,
-            selectionSet); // Wait for recursive selection to complete
-      }
-    }
-  }
-
-  Future<void> _recursiveDeselection(WidgetRef ref,
-      String filePath,
-      Set<String> selectionSet,) async {
-    final isDirectory = FileSystemEntity.isDirectorySync(filePath);
-    selectionSet.remove(filePath);
-
-    if (isDirectory) {
-      // Assuming there's logic here similar to _recursiveSelection for fetching and processing contents
-      await ref.read(directoryContentsProvider(filePath).future);
-      final folderContents = ref
-          .read(directoryContentsProvider(filePath))
-          .value ?? [];
-      for (final childPath in folderContents) {
-        await _recursiveDeselection(ref, childPath, selectionSet);
-      }
-    }
-  }
-
-  Future<void> _updateEstimatedTokenCount(WidgetRef ref) async {
-    final currentSelectedFiles = ref.read(selectedFilesProvider);
-    int tokenCount = 0;
-
-    // Use a list of futures to track completion of all asynchronous operations
-    var futures = <Future>[];
-
-    for (var filePath in currentSelectedFiles) {
-      futures.add(Future(() async {
-        if (await isUtf8Encoded(filePath)) {
-          final file = File(filePath);
-          final fileContent = await file.readAsString();
-          tokenCount += estimateTokenCount(fileContent);
-        }
-      }));
-    }
-
-    // Wait for all file processing operations to complete
-    await Future.wait(futures);
-
-    // Optionally add a delay to ensure the state update is the last operation
-    Future.delayed(Duration.zero, () {
-      // Update the estimated token count provider with the new count
-      ref
-          .read(estimatedTokenCountProvider.notifier)
-          .state = tokenCount;
+  void _toggleFolderExpansion(String path) {
+    ref.read(expandedFoldersProvider.notifier).update((state) {
+      final newSet = {...state};
+      if (newSet.contains(path)) newSet.remove(path);
+      else newSet.add(path);
+      return newSet;
     });
   }
 
-  List<Map<String, dynamic>> _generateCombinedFilesList(WidgetRef ref,
-      List<String> files, int depth) {
-    List<Map<String, dynamic>> combinedList = [];
-    for (final filePath in files) {
-      final isDirectory = FileSystemEntity.isDirectorySync(filePath);
-      // Add the file or directory with its current depth
-      combinedList
-          .add({'path': filePath, 'depth': depth, 'isDirectory': isDirectory});
+  void _handleSelection(FileNode node) {
+    final selected = ref.read(selectedNodesProvider);
+    final isCurrentlySelected = selected.contains(node.path);
+    Set<String> affectedPaths = _getAllChildPaths(node);
 
-      // If it's a directory and expanded, recursively add its contents with incremented depth
-      if (isDirectory && isExpanded(ref, filePath)) {
-        final folderContentsAsync = ref.watch(
-            directoryContentsProvider(filePath));
-        final folderContents = folderContentsAsync
-            .whenData((data) => data)
-            .value ?? [];
-        combinedList
-            .addAll(_generateCombinedFilesList(ref, folderContents, depth + 1));
+    ref.read(selectedNodesProvider.notifier).update((state) {
+      final newSet = {...state};
+      if (isCurrentlySelected) newSet.removeAll(affectedPaths);
+      else newSet.addAll(affectedPaths);
+      return newSet;
+    });
+  }
+
+  Set<String> _getAllChildPaths(FileNode node) {
+    final paths = <String>{node.path};
+    if (node.isDirectory) {
+      for (final child in node.children) {
+        paths.addAll(_getAllChildPaths(child));
       }
     }
-    return combinedList;
+    return paths;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedPaths = ref.watch(selectedNodesProvider);
+    final expandedFolders = ref.watch(expandedFoldersProvider);
+
+    final isSelected = selectedPaths.contains(widget.node.path);
+    final isExpanded = expandedFolders.contains(widget.node.path);
+
+    final primaryColor = Theme.of(context).primaryColor;
+
+    return Focus(
+      onKeyEvent: (focusNode, event) {
+        if (event is KeyDownEvent) {
+          final key = event.logicalKey;
+          if (key == LogicalKeyboardKey.enter && widget.node.isDirectory) {
+            _toggleFolderExpansion(widget.node.path);
+            return KeyEventResult.handled;
+          }
+          if (key == LogicalKeyboardKey.space) {
+            _handleSelection(widget.node);
+            return KeyEventResult.handled;
+          }
+          if (key == LogicalKeyboardKey.arrowRight && widget.node.isDirectory && !isExpanded) {
+            _toggleFolderExpansion(widget.node.path);
+            return KeyEventResult.handled;
+          }
+          if (key == LogicalKeyboardKey.arrowLeft && widget.node.isDirectory && isExpanded) {
+            _toggleFolderExpansion(widget.node.path);
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final hasFocus = Focus.of(context).hasFocus;
+
+          return MouseRegion(
+            onEnter: (_) => setState(() => _isHovered = true),
+            onExit: (_) => setState(() => _isHovered = false),
+            cursor: SystemMouseCursors.click,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.symmetric(vertical: 2),
+              decoration: BoxDecoration(
+                // NOUVEAU : Logique de décoration beaucoup plus riche
+                color: isSelected
+                    ? primaryColor.withOpacity(0.2)
+                    : _isHovered
+                        ? Colors.white.withOpacity(0.08)
+                        : hasFocus
+                           ? Colors.white.withOpacity(0.12)
+                           : Colors.transparent,
+                border: Border(
+                  left: BorderSide(
+                    color: isSelected ? primaryColor : Colors.transparent,
+                    width: 3,
+                  ),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: ListTile(
+                dense: true,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                key: ValueKey(widget.node.path),
+                title: Text(
+                  widget.node.name,
+                  style: TextStyle(
+                    // NOUVEAU : Texte blanc vif pour la sélection, pour un meilleur contraste
+                    color: isSelected ? Colors.white : Theme.of(context).colorScheme.onBackground,
+                    fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                  ),
+                ),
+                leading: Padding(
+                  padding: EdgeInsets.only(left: 20.0 * widget.depth),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.node.isDirectory)
+                        IconButton(
+                          icon: Icon(isExpanded ? Icons.expand_more : Icons.chevron_right),
+                          onPressed: () => _toggleFolderExpansion(widget.node.path),
+                          splashRadius: 20,
+                          color: isSelected ? Colors.white : null,
+                        )
+                      else
+                        const SizedBox(width: 48),
+
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: widget.node.isDirectory
+                            ? folderIconWidget(widget.node.name, widget.folderSvgIconMetadata)
+                            : fileIconWidget(widget.node.name, widget.fileSvgIconMetadata),
+                      ),
+                    ],
+                  ),
+                ),
+                onTap: () => _handleSelection(widget.node),
+              ),
+            ),
+          );
+        }
+      ),
+    );
   }
 }
