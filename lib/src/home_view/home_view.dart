@@ -30,6 +30,7 @@ class HomeViewState extends ConsumerState<HomeView> {
     final fileTreeAsync = ref.watch(fileTreeProvider);
     final tokenCountAsync = ref.watch(estimatedTokenCountProvider);
     final selectedNodes = ref.watch(selectedNodesProvider);
+    final expandedFolders = ref.watch(expandedFoldersProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -47,6 +48,13 @@ class HomeViewState extends ConsumerState<HomeView> {
               })
             : const Text('CodeFusion'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_zip_outlined),
+            tooltip: 'Tout réduire',
+            onPressed: expandedFolders.isNotEmpty
+                ? () => ref.read(expandedFoldersProvider.notifier).state = {}
+                : null,
+          ),
           IconButton(
             icon: const Icon(Icons.deselect),
             tooltip: 'Tout désélectionner',
