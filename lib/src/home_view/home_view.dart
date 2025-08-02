@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui'; // Import pour BackdropFilter
 
 import 'package:code_fusion/src/home_view/file_list_panel.dart';
 import 'package:code_fusion/src/home_view/state_providers.dart';
@@ -71,84 +72,112 @@ class HomeViewState extends ConsumerState<HomeView> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          children: [
+            Expanded(
               child: _buildBody(context, selectedDirectory, fileTreeAsync),
             ),
-          ),
-          if (selectedDirectory != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: selectedNodes.isNotEmpty ? _exportSelectedFilesToFile : null,
-                    icon: const Icon(Icons.save_as_outlined, size: 16),
-                    label: const Text('Exporter'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            if (selectedDirectory != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: selectedNodes.isNotEmpty ? _exportSelectedFilesToFile : null,
+                      icon: const Icon(Icons.save_as_outlined, size: 16),
+                      label: const Text('Exporter'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: selectedNodes.isNotEmpty ? _copySelectedFilesToClipboard : null,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    const SizedBox(width: 16),
+                    ElevatedButton(
+                      onPressed: selectedNodes.isNotEmpty ? _copySelectedFilesToClipboard : null,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(_isCopied ? Icons.check_circle_outline : Icons.content_copy, size: 16.0),
+                          const SizedBox(width: 8),
+                          if (_isCopied)
+                            const Text('Copié !')
+                          else
+                            tokenCountAsync.when(
+                              data: (count) => Text('Copier (~${_formatTokens(count)})'),
+                              loading: () => const Row(children: [Text('Calcul...'), SizedBox(width:12, height:12, child: CircularProgressIndicator(strokeWidth:2, color: Colors.white))]),
+                              error: (e, s) => const Text('Erreur'),
+                            ),
+                        ],
+                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(_isCopied ? Icons.check : Icons.content_copy, size: 16.0),
-                        const SizedBox(width: 8),
-                        if (_isCopied)
-                          const Text('Copié !')
-                        else
-                          tokenCountAsync.when(
-                            data: (count) => Text('Copier (~${_formatTokens(count)})'),
-                            loading: () => const Row(children: [Text('Calcul...'), SizedBox(width:12, height:12, child: CircularProgressIndicator(strokeWidth:2))]),
-                            error: (e, s) => const Text('Erreur'),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassPanel({required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: Container(
+          decoration: BoxDecoration(
+            // AJUSTEMENT : Une opacité légèrement plus faible pour un look plus subtil.
+            color: Theme.of(context).colorScheme.background.withOpacity(0.65),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
+          ),
+          child: child,
+        ),
       ),
     );
   }
 
   Widget _buildBody(BuildContext context, String? selectedDirectory, AsyncValue<FileNode?> fileTreeAsync) {
     if (selectedDirectory == null) {
-      return Center(key: const ValueKey('welcome'), child: ElevatedButton(onPressed: _pickDirectory, child: const Text("Sélectionner un dossier")));
+      return Center(
+        key: const ValueKey('welcome'),
+        child: ElevatedButton(
+          onPressed: _pickDirectory,
+          style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
+          child: const Text("Sélectionner un dossier de projet"),
+        )
+      );
     }
 
-    return fileTreeAsync.when(
-      loading: () => Center(key: const ValueKey('loading'), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [CircularProgressIndicator(), SizedBox(height: 16), Text('Scan du dossier en cours...')])),
-      error: (error, stack) {
-        if (error is Exception && error.toString().contains('Scan cancelled')) {
-          return Center(key: const ValueKey('loading-cancelled'), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [CircularProgressIndicator(), SizedBox(height: 16), Text('Changement de dossier...')]));
-        }
-        return Center(key: const ValueKey('error'), child: Padding(padding: const EdgeInsets.all(16.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 48), const SizedBox(height: 16), const Text('Une erreur est survenue.', textAlign: TextAlign.center), Text('Vérifiez les permissions du dossier.', style: Theme.of(context).textTheme.bodySmall), const SizedBox(height: 16), ElevatedButton(onPressed: () => ref.invalidate(fileTreeProvider), child: const Text('Réessayer'))])));
-      },
-      data: (fileTree) {
-        final fileMetadata = ref.watch(fileSvgIconMetadataLoaderProvider);
-        final folderMetadata = ref.watch(folderSvgIconMetadataLoaderProvider);
-        return fileMetadata.when(
-          data: (fm) => folderMetadata.when(
-              data: (fom) => FileListPanel(key: const ValueKey('data-panel'), fileSvgIconMetadata: fm, folderSvgIconMetadata: fom),
+    return _buildGlassPanel(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: fileTreeAsync.when(
+          loading: () => Center(key: const ValueKey('loading'), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [CircularProgressIndicator(), SizedBox(height: 16), Text('Analyse du projet...')])),
+          error: (error, stack) {
+            if (error is Exception && error.toString().contains('Scan cancelled')) {
+              return Center(key: const ValueKey('loading-cancelled'), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: const [CircularProgressIndicator(), SizedBox(height: 16), Text('Changement de dossier...')]));
+            }
+            return Center(key: const ValueKey('error'), child: Padding(padding: const EdgeInsets.all(16.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.error_outline, color: Colors.red, size: 48), const SizedBox(height: 16), const Text('Une erreur est survenue.', textAlign: TextAlign.center), Text('Vérifiez les permissions du dossier.', style: Theme.of(context).textTheme.bodySmall), const SizedBox(height: 16), ElevatedButton(onPressed: () => ref.invalidate(fileTreeProvider), child: const Text('Réessayer'))])));
+          },
+          data: (fileTree) {
+            final fileMetadata = ref.watch(fileSvgIconMetadataLoaderProvider);
+            final folderMetadata = ref.watch(folderSvgIconMetadataLoaderProvider);
+            return fileMetadata.when(
+              data: (fm) => folderMetadata.when(
+                  data: (fom) => FileListPanel(key: const ValueKey('data-panel'), fileSvgIconMetadata: fm, folderSvgIconMetadata: fom),
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, s) => const Center(child: Text("Erreur icônes dossiers"))),
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, s) => const Center(child: Text("Erreur icônes dossiers"))),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, s) => const Center(child: Text("Erreur icônes fichiers")));
-      },
+              error: (e, s) => const Center(child: Text("Erreur icônes fichiers")));
+          },
+        ),
+      ),
     );
   }
 

@@ -1,10 +1,10 @@
 name: code_fusion
-description: "Sélectionne dossiers/fichiers et copie leur contenu brut avec marqueurs ‘###### nom_de_fichier’ avant et après chaque bloc."
+description: "Un outil de développement pour sélectionner, fusionner et exporter des fichiers de code pour les LLMs."
 
 # Prevent accidental publishing to pub.dev.
 publish_to: 'none'
 
-version: 1.1.2
+version: 1.2.0
 
 environment:
   sdk: '>=3.3.3 <4.0.0'
